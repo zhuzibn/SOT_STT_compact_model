@@ -1,0 +1,356 @@
+// SOT and STT switching of magnetization
+// The structure of this code follows zhuzibn/ODE_LLG_integral at https://github.com/zhuzibn/ODE_LLG_integral
+
+`include "disciplines.vams"
+`include "constants.vams"
+
+module MTJtest(pl,  // Pinned layer terminal of the MTJ
+               HML, // Left terminal of the heavy metal layer
+               HMR, // Right terminal of the heavy metal layer
+               mx,
+               my,
+               mz);
+    
+    // Constants
+    parameter real gamma = 1.760859644e11;        // [rad/s/T]
+    parameter real ele = 1.602176565e-19;	      // elementary charge, [C]
+    parameter real mu_0  = 1.25663706143592e-06;   // vacuum permeability [T.m/A]
+    //parameter real mub = 9.274e-24;// Borh magneton [J/T]
+    parameter real hbar  = 6.58211951440e-16;      // reduced plank's constant [eV.s]
+    parameter real kb    = 1.38064852e-23;// Boltzman constant [J/K]
+    
+    parameter real max_tstep = 5e-12;                     // [s] max time step
+    
+    parameter real tFL = 0.6e-9;                      // [m] thickness of free layer
+    parameter real WFL = 50e-9;                       // [m] MTJ width
+    parameter real LFL = 50e-9;                       // [m] MTJ length
+    
+    parameter real tHM = 2e-9;                      // [m] thickness of HM
+    parameter real WHM = 55e-9;                       // [m] HM width
+    parameter real LHM = 55e-9;                       // [m] HM length
+    
+    parameter real Ms    = 1000;                      // saturation magnetization 1000[emu/cm3]    = 1e6[A/m]
+    parameter real alpha = 0.01;                      // alpha damping factor
+    parameter real Hk    = 4*`M_PI*1600*1e-4;         // uniaxial anisotropy [T]    = 1600emu/cm3
+    // external field
+    parameter real hext_x = 0;                        //  [T]
+    parameter real hext_y = 0;
+    parameter real hext_z = 0;
+    
+    // STT parameters
+    parameter real PolFL      = 0.4;                // polarization of FL layer
+    parameter real PSTT_x     = 0;
+    parameter real PSTT_y     = 0;
+    parameter real PSTT_z     = 1;
+    parameter real facFLT_STT = 0;                  // ratio of FLT over DLT
+    
+    // SOT parameters
+    parameter real thetaSH    = 0.2;            //spin Hall angle
+    parameter real lambdaSF   = 5e-9;           //spin diffusion length
+    parameter real PSOT_x     = 0;              //spin flux polarization
+    parameter real PSOT_y     = 1;
+    parameter real PSOT_z     = 0;
+    parameter real facFLT_SOT = 0;                  // ratio of FLT over DLT
+    
+    // initial angle
+    parameter real theta_init = `M_PI*5/180;      // [rad]
+    parameter real phi_init   = 0.0;                // [rad]
+    parameter real mx_PL      = 0;                  // pinned layer magnetization
+    parameter real my_PL      = 0;
+    parameter real mz_PL      = 1;
+    
+    // demagnization
+    parameter real demag_nx = 0.01968237864387906;
+    parameter real demag_ny = 0.01968237864387906;
+    parameter real demag_nz = 0.960635227939411;      // online calculated
+    
+    // TMR and Resistance
+    parameter real RP   = 2.0e3;                       // RP resistance, [ohm]
+    parameter real TMR  = 1.5;
+    parameter real R_HM = 500;                       // HM resistance, [ohm], change to calculate using resistivity
+    
+    // ports
+    inout pl, HML, HMR, mx, my, mz;
+    electrical pl, HML, HMR, mx, my, mz;
+    
+    real RAP = RP*(1+TMR);
+    real R_mtj;
+    real scal = gamma / (1+alpha*alpha);       // scale parameter
+    real m_x, m_y, m_z, mm1_x, mm1_y, mm1_z;
+    real dmdt_x, dmdt_y, dmdt_z;
+    real heff_x, heff_y, heff_z;
+    real hsttdlt, hsttflt;
+    real hsotdlt, hsotflt;
+    
+    real kk1x, kk1y, kk1z, kk2x, kk2y, kk2z, kk3x, kk3y, kk3z, kk4x, kk4y, kk4z;
+    real norm;
+    real dt, p_time; // time control
+    real Jc_STT, Jc_SOT; // current density for STT and SOT
+    real Jp; // characteristic current density for STT
+    
+    // Fields -----------------------------------------------------------
+    analog function real field_eta;
+    input m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL,
+    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT;
+    output heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt;
+    real m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL,
+    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT,
+    hk_z, hd_x, hd_y, hd_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, b, hsotdlt, hsotflt;
+    
+    begin
+    // uniaxial anisotropy
+    hk_z = Hk*m_z;
+    
+    // demagnetization
+    hd_x = -4*1e-4*Ms*demag_nx*m_x*`M_PI;        // [T]
+    hd_y = -4*1e-4*Ms*demag_ny*m_y*`M_PI;
+    hd_z = -4*1e-4*Ms*demag_nz*m_z*`M_PI;
+    
+    heff_x = hext_x + hd_x;      // heff_x
+    heff_y = hext_y + hd_y;      // heff_y
+    heff_z = hext_z + hd_z + hk_z; // heff_z
+    
+    // STT
+    b       = PolFL/(1+PolFL*PolFL*(m_x*mx_PL + m_y*my_PL + m_z*mz_PL)); //STT efficiency
+    hsttdlt = Jc_STT/Jp*b;        // STT DLT effective field
+    hsttflt = facFLT_STT*hsttdlt; // STT FLT effective field
+    
+    hsotdlt = thetaSH*Jc_SOT/Jp;        // SOT DLT effective field
+    hsotflt = facFLT_SOT*hsotdlt; // SOT FLT effective field
+    
+    field_eta = 0;
+    end
+    endfunction
+    
+    // LLG_solver -------------------------------------------------------------------------
+    analog function real LLG_solver;
+    input alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z,
+    hsttdlt, hsttflt, hsotdlt, hsotflt;
+    output dmdt_x, dmdt_y, dmdt_z;
+    real alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z,
+    hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z,
+    u1, u2, u3, v1, v2, v3, dsdt1x, dsdt1y, dsdt1z, dsdt2x, dsdt2y, dsdt2z, u1tmp, u2tmp, u3tmp, v1tmp, v2tmp, v3tmp,
+    dbdSOTx, dbdSOTy, dbdSOTz, fbdSOTx, fbdSOTy, fbdSOTz, dbfSOTx, dbfSOTy, dbfSOTz, fbfSOTx, fbfSOTy, fbfSOTz,
+    dbdSTTx, dbdSTTy, dbdSTTz, fbdSTTx, fbdSTTy, fbdSTTz, dbfSTTx, dbfSTTy, dbfSTTz, fbfSTTx, fbfSTTy, fbfSTTz;
+    
+    begin
+    // consistent with the calculation in ASTRO/atomgpurk4.m at https://github.com/zhuzibn/ASTRO/blob/master/atomgpurk4.m
+    // cross(u,v) = (u2v3-u3v2)i+(u3v1-u1v3)j+(u1v2-u2v1)k
+    // -cross(sss,hh) = cross(hh,sss) Beff FLT
+    u1     = heff_x;
+    u2     = heff_y;
+    u3     = heff_z;
+    v1     = m_x;
+    v2     = m_y;
+    v3     = m_z;
+    dsdt1x = u2*v3-u3*v2;
+    dsdt1y = u3*v1-u1*v3;
+    dsdt1z = u1*v2-u2*v1;
+    // cross(cross(sss,hh),sss) Beff DLT
+    u1     = -dsdt1x;
+    u2     = -dsdt1y;
+    u3     = -dsdt1z;
+    v1     = m_x;
+    v2     = m_y;
+    v3     = m_z;
+    dsdt2x = u2*v3-u3*v2;
+    dsdt2y = u3*v1-u1*v3;
+    dsdt2z = u1*v2-u2*v1;
+    // cross(-sss,cross(sss,ey)) BdSOT DLT
+    u1tmp   = m_x;
+    u2tmp   = m_y;
+    u3tmp   = m_z;
+    v1tmp   = PSOT_x;
+    v2tmp   = PSOT_y;
+    v3tmp   = PSOT_z;
+    v1      = u2tmp*v3tmp-u3tmp*v2tmp;
+    v2      = u3tmp*v1tmp-u1tmp*v3tmp;
+    v3      = u1tmp*v2tmp-u2tmp*v1tmp;
+    u1      = -m_x;
+    u2      = -m_y;
+    u3      = -m_z;
+    dbdSOTx = u2*v3-u3*v2; //damping-like BdSOT
+    dbdSOTy = u3*v1-u1*v3;
+    dbdSOTz = u1*v2-u2*v1;
+    // cross(sss,ey) BdSOT FLT
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    v1      = PSOT_x;
+    v2      = PSOT_y;
+    v3      = PSOT_z;
+    fbdSOTx = u2*v3-u3*v2; //field-like BdSOT
+    fbdSOTy = u3*v1-u1*v3;
+    fbdSOTz = u1*v2-u2*v1;
+    // cross(sss,cross(sss,ey)) BfSOT DLT
+    u1tmp   = m_x;
+    u2tmp   = m_y;
+    u3tmp   = m_z;
+    v1tmp   = PSOT_x;
+    v2tmp   = PSOT_y;
+    v3tmp   = PSOT_z;
+    v1      = u2tmp*v3tmp-u3tmp*v2tmp;
+    v2      = u3tmp*v1tmp-u1tmp*v3tmp;
+    v3      = u1tmp*v2tmp-u2tmp*v1tmp;
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    dbfSOTx = u2*v3-u3*v2;//damping-like BfSOT
+    dbfSOTy = u3*v1-u1*v3;
+    dbfSOTz = u1*v2-u2*v1;
+    //cross(sss,ey) BfSOT FLT
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    v1      = PSOT_x;
+    v2      = PSOT_y;
+    v3      = PSOT_z;
+    fbfSOTx = u2*v3-u3*v2;//field-like BfSOT
+    fbfSOTy = u3*v1-u1*v3;
+    fbfSOTz = u1*v2-u2*v1;
+    // cross(-sss,cross(sss,ey)) BdSTT DLT
+    u1tmp   = m_x;
+    u2tmp   = m_y;
+    u3tmp   = m_z;
+    v1tmp   = PSTT_x;
+    v2tmp   = PSTT_y;
+    v3tmp   = PSTT_z;
+    v1      = u2tmp*v3tmp-u3tmp*v2tmp;
+    v2      = u3tmp*v1tmp-u1tmp*v3tmp;
+    v3      = u1tmp*v2tmp-u2tmp*v1tmp;
+    u1      = -m_x;
+    u2      = -m_y;
+    u3      = -m_z;
+    dbdSTTx = u2*v3-u3*v2; //damping-like BdSTT
+    dbdSTTy = u3*v1-u1*v3;
+    dbdSTTz = u1*v2-u2*v1;
+    // cross(sss,ey) BdSTT FLT
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    v1      = PSTT_x;
+    v2      = PSTT_y;
+    v3      = PSTT_z;
+    fbdSTTx = u2*v3-u3*v2;//field-like BdSTT
+    fbdSTTy = u3*v1-u1*v3;
+    fbdSTTz = u1*v2-u2*v1;
+    // cross(sss,cross(sss,ey)) BfSTT DLT
+    u1tmp   = m_x;
+    u2tmp   = m_y;
+    u3tmp   = m_z;
+    v1tmp   = PSTT_x;
+    v2tmp   = PSTT_y;
+    v3tmp   = PSTT_z;
+    v1      = u2tmp*v3tmp-u3tmp*v2tmp;
+    v2      = u3tmp*v1tmp-u1tmp*v3tmp;
+    v3      = u1tmp*v2tmp-u2tmp*v1tmp;
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    dbfSTTx = u2*v3-u3*v2;//damping-like BfSTT
+    dbfSTTy = u3*v1-u1*v3;
+    dbfSTTz = u1*v2-u2*v1;
+    // cross(sss,ey) BfSTT FLT
+    u1      = m_x;
+    u2      = m_y;
+    u3      = m_z;
+    v1      = PSTT_x;
+    v2      = PSTT_y;
+    v3      = PSTT_z;
+    fbfSTTx = u2*v3-u3*v2;//field-like BfSTT
+    fbfSTTy = u3*v1-u1*v3;
+    fbfSTTz = u1*v2-u2*v1;
+    
+    dmdt_x = dsdt1x+alpha*dsdt2x+hsotdlt*dbdSOTx+alpha*hsotdlt*fbdSOTx+alpha*hsotflt*dbfSOTx+hsotflt*fbfSOTx+
+    hsttdlt*dbdSTTx+alpha*hsttdlt*fbdSTTx+alpha*hsttflt*dbfSTTx+hsttflt*fbfSTTx;
+    
+    dmdt_y = dsdt1y+alpha*dsdt2y+hsotdlt*dbdSOTy+alpha*hsotdlt*fbdSOTy+alpha*hsotflt*dbfSOTy+hsotflt*fbfSOTy+
+    hsttdlt*dbdSTTy+alpha*hsttdlt*fbdSTTy+alpha*hsttflt*dbfSTTy+hsttflt*fbfSTTy;
+    
+    dmdt_z = dsdt1z+alpha*dsdt2z+hsotdlt*dbdSOTz+alpha*hsotdlt*fbdSOTz+alpha*hsotflt*dbfSOTz+hsotflt*fbfSOTz+
+    hsttdlt*dbdSTTz+alpha*hsttdlt*fbdSTTz+alpha*hsttflt*dbfSTTz+hsttflt*fbfSTTz;
+    
+    LLG_solver = 0;
+    end
+    endfunction
+    
+    // ------------------------------------------------------------------------------
+    // LLG behavior
+    analog begin
+    
+    // initialization -----------------------------------------------------------
+    @(initial_step) begin
+    
+    // transform to cart
+    mm1_x = sin(theta_init)*cos(phi_init);
+    mm1_y = sin(theta_init)*sin(phi_init);
+    mm1_z = cos(theta_init);
+    
+    Jp = (2*tFL*(Ms*1e3))/hbar;
+    
+    p_time = -max_tstep; // Previous time
+    end
+    
+    // time control
+    $bound_step(max_tstep);
+    dt = $abstime-p_time;
+    
+    R_mtj = RP+(RAP-RP)*((1-mm1_z)/2);
+    I(HML, pl) <+ V(HML, pl)/R_mtj;               // current direction: fl->pl
+    Jc_STT = V(HML, pl)/R_mtj/WFL/LFL;
+    Jc_SOT = V(HML, HMR)/R_HM/WHM/tHM;
+    // solving LLG equation using RK4 -------------------------------------------
+    m_x = mm1_x;
+    m_y = mm1_y;
+    m_z = mm1_z;
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
+    kk1x = scal*dmdt_x;
+    kk1y = scal*dmdt_y;
+    kk1z = scal*dmdt_z;
+    
+    m_x = mm1_x+kk1x*dt/2;
+    m_y = mm1_y+kk1y*dt/2;
+    m_z = mm1_z+kk1z*dt/2;
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
+    kk2x = scal*dmdt_x;
+    kk2y = scal*dmdt_y;
+    kk2z = scal*dmdt_z;
+    
+    m_x = mm1_x+kk2x*dt/2;
+    m_y = mm1_y+kk2y*dt/2;
+    m_z = mm1_z+kk2z*dt/2;
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
+    kk3x = scal*dmdt_x;
+    kk3y = scal*dmdt_y;
+    kk3z = scal*dmdt_z;
+    
+    m_x = mm1_x+kk3x*dt;
+    m_y = mm1_y+kk3y*dt;
+    m_z = mm1_z+kk3z*dt;
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
+    kk4x = scal*dmdt_x;
+    kk4y = scal*dmdt_y;
+    kk4z = scal*dmdt_z;
+    
+    m_x = mm1_x+dt/6*(kk1x+2*kk2x+2*kk3x+kk4x);
+    m_y = mm1_y+dt/6*(kk1y+2*kk2y+2*kk3y+kk4y);
+    m_z = mm1_z+dt/6*(kk1z+2*kk2z+2*kk3z+kk4z);
+    
+    norm  = sqrt(m_x*m_x+m_y*m_y+m_z*m_z);
+    mm1_x = m_x/norm;
+    mm1_y = m_y/norm;
+    mm1_z = m_z/norm;
+    
+    V(mx) <+ mm1_x;
+    V(my) <+ mm1_y;
+    V(mz) <+ mm1_z;                              // output m_z
+    
+    
+    p_time = $abstime;
+    end
+    
+endmodule
