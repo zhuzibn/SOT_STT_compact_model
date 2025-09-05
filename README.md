@@ -3,10 +3,9 @@
 
 - It is a three terminal device 
 - The free layer has perpendicular magnetization
+### Determine the sign of **θ**<sub>sh</sub>
+  - According to the following code, **σ** = +**y** when **J**<sub>c</sub> &gt; 0 along +**x** direction and **J**<sub>s</sub> along +**z** direction
 
-### Determine the sign of $\mathbf{θ}_{sh}$
-
-- According to the following code, $\mathbf{σ}=+\mathbf{y}$ when $\mathbf{J}_\mathrm{c}>0$ along $+\mathbf{x}$ direction and $\mathbf{J}_\mathrm{s}$ along $+\mathbf{z}$ direction 
 
 ```verilog
     parameter real PSOT_x     = 0;              //spin flux polarization
@@ -20,15 +19,19 @@
 - As shown in the verification section, we apply $\mathbf{H}_x =-\mathbf{x}$
 
 - According to 
-  $$
-  \Delta{\mathbf{m}}=\mathbf{m}\times({\mathbf{m}}\times{\mathbf{σ}}),
-  $$
+  
+  ```math
+    \Delta{\mathbf{m}}=\mathbf{m}\times({\mathbf{m}}\times{\mathbf{σ}}),
+  ```
+  
   one can get $\Delta{\mathbf{m}}=-\mathbf{y}$
-
+  
 - According to 
-  $$
+  
+  ```math
   \mathbf{L}=\Delta{\mathbf{m}}\times\mathbf{H}_x,
-  $$
+  ```
+  
   one can get $\mathbf{L}=-\mathbf{z}$, therefore, the magnetization is switched from up to down, which will be verified in the simulation.
 
 ### Verification
