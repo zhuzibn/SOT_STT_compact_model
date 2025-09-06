@@ -16,7 +16,7 @@
 - Following $\mathbf{J}_\mathrm{s}=\theta_{sh}\mathbf{σ} \times \mathbf{J}_\mathrm{c}$, one can determine **$\mathbf{θ}_{sh}<0$** 
 ### Determine the switching direction
 
-- As shown in the verification section, we apply $\mathbf{H}_x =-\mathbf{x}$
+- As shown in the verification section, we apply **H**<sub>x</sub> = −**x**
 
 - According to 
   
@@ -32,7 +32,7 @@
   \mathbf{L}=\Delta{\mathbf{m}}\times\mathbf{H}_x,
   ```
   
-  one can get $\mathbf{L}=-\mathbf{z}$, therefore, the magnetization is switched from up to down, which will be verified in the simulation.
+  one can get **L** = −**z**, therefore, the magnetization is switched from up to down, which will be verified in the simulation.
 
 ### Verification
 
@@ -43,13 +43,15 @@
     parameter real hext_x = -100e-3;
     ```
     
-  - Virtuoso setups
-
+1. Virtuoso setups and results
+   
     <img src="README.assets/image-20250904180004529.png" alt="image-20250904180004529" style="zoom:33%;" />
+    
+    <img src="README.assets/image-20250906114935376.png" alt="image-20250906114935376" style="zoom:33%;" />
+  - The waveform shows I<sub>HM</sub> = 4.42 μA, converting into current density is 4.0182e11 A/m^2, which will be used in the matlab simulation for benchmarking.
+2. Comparison between matlab and verilog-a
 
-  - Comparison between matlab and verilog-a
-
-    <img src="README.assets/image-20250904180050650.png" alt="image-20250904180050650" style="zoom:33%;" />
+<img src="README.assets/image-20250904180050650.png" alt="image-20250904180050650" style="zoom:33%;" />
 
 
 ## STT verification
