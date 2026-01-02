@@ -37,6 +37,8 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     parameter real hext_y = 0;
     parameter real hext_z = 0;
     
+    parameter real Temp = 0; // Temperature in Kelvin
+    integer seed;
     // STT parameters
     parameter real PolFL      = 0.4;                // polarization of FL layer
     parameter real PSTT_x     = 0;
@@ -79,6 +81,7 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     real m_x, m_y, m_z, mm1_x, mm1_y, mm1_z;
     real dmdt_x, dmdt_y, dmdt_z;
     real heff_x, heff_y, heff_z;
+    real hth_x, hth_y, hth_z;
     real hsttdlt, hsttflt;
     real hsotdlt, hsotflt;
     
@@ -91,10 +94,10 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     // Fields -----------------------------------------------------------
     analog function real field_eta;
     input m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL,
-    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT;
+    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z;
     output heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt;
     real m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL,
-    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT,
+    mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z,
     hk_z, hd_x, hd_y, hd_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, b, hsotdlt, hsotflt;
     
     begin
@@ -106,9 +109,9 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     hd_y = -4*1e-4*Ms*demag_ny*m_y*`M_PI;
     hd_z = -4*1e-4*Ms*demag_nz*m_z*`M_PI;
     
-    heff_x = hext_x + hd_x;      // heff_x
-    heff_y = hext_y + hd_y;      // heff_y
-    heff_z = hext_z + hd_z + hk_z; // heff_z
+    heff_x = hext_x + hd_x + hth_x;
+    heff_y = hext_y + hd_y + hth_y;
+    heff_z = hext_z + hd_z + hk_z + hth_z;
     
     // STT
     b       = PolFL/(1+PolFL*PolFL*(m_x*mx_PL + m_y*my_PL + m_z*mz_PL)); //STT efficiency
@@ -279,7 +282,7 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     analog begin
     
     // initialization -----------------------------------------------------------
-    @(initial_step) begin
+    @(initial_step("tran")) begin
     
     // transform to cart
     mm1_x = sin(theta_init)*cos(phi_init);
@@ -288,22 +291,36 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     
     Jp = (2*tFL*(Ms*1e3))/hbar;
     
-    p_time = -max_tstep; // Previous time
+    p_time = 0; // Previous time
+    seed   = 42; // Initialize random seed
     end
     
-    // time control
-    $bound_step(max_tstep);
-    dt = $abstime-p_time;
+    @(timer(0, max_tstep)) begin // update only on accepted timesteps using a timer event
+    dt = max_tstep;
     
-    R_mtj = RP+(RAP-RP)*((1-mm1_z)/2);
-    I(HML, pl) <+ V(HML, pl)/R_mtj;               // current direction: fl->pl
+    R_mtj  = RP+(RAP-RP)*((1-mm1_z)/2);
     Jc_STT = V(HML, pl)/R_mtj/WFL/LFL;
     Jc_SOT = V(HML, HMR)/R_HM/WHM/tHM;
+    
+    // --- Thermal Noise Calculation ---
+    // Magnitude of thermal field: sqrt((2 * alpha * kb * T) / (gamma * Ms * Vol * dt))
+    // Note: Vol = WFL * LFL * tFL
+    begin : thermal_field
+    real vol, std_dev;
+    vol = WFL * LFL * tFL;
+    // Use mu_0 to convert energy to Tesla field units
+    std_dev = sqrt(2 * alpha * kb * Temp / (gamma * (Ms*1e3) * vol * dt));
+    
+    // Random components for each axis
+    hth_x = std_dev * $dist_normal(seed, 0, 1);
+    hth_y = std_dev * $dist_normal(seed, 0, 1);
+    hth_z = std_dev * $dist_normal(seed, 0, 1);
+    end
     // solving LLG equation using RK4 -------------------------------------------
     m_x = mm1_x;
     m_y = mm1_y;
     m_z = mm1_z;
-    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
     LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
     kk1x = scal*dmdt_x;
     kk1y = scal*dmdt_y;
@@ -312,7 +329,7 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     m_x = mm1_x+kk1x*dt/2;
     m_y = mm1_y+kk1y*dt/2;
     m_z = mm1_z+kk1z*dt/2;
-    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
     LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
     kk2x = scal*dmdt_x;
     kk2y = scal*dmdt_y;
@@ -321,7 +338,7 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     m_x = mm1_x+kk2x*dt/2;
     m_y = mm1_y+kk2y*dt/2;
     m_z = mm1_z+kk2z*dt/2;
-    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
     LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
     kk3x = scal*dmdt_x;
     kk3y = scal*dmdt_y;
@@ -330,7 +347,7 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     m_x = mm1_x+kk3x*dt;
     m_y = mm1_y+kk3y*dt;
     m_z = mm1_z+kk3z*dt;
-    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
+    field_eta(m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL, mz_PL, PolFL, facFLT_STT, Jp, thetaSH, Jc_SOT, facFLT_SOT, hth_x, hth_y, hth_z, heff_x, heff_y, heff_z, hsttdlt, hsttflt, hsotdlt, hsotflt);
     LLG_solver(alpha, m_x, m_y, m_z, heff_x, heff_y, heff_z, PSTT_x, PSTT_y, PSTT_z, PSOT_x, PSOT_y, PSOT_z, hsttdlt, hsttflt, hsotdlt, hsotflt, dmdt_x, dmdt_y, dmdt_z);
     kk4x = scal*dmdt_x;
     kk4y = scal*dmdt_y;
@@ -345,12 +362,13 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     mm1_y = m_y/norm;
     mm1_z = m_z/norm;
     
+    end
+    R_mtj = RP+(RAP-RP)*((1-mm1_z)/2);
+    I(HML, pl) <+ V(HML, pl)/R_mtj;               // current direction: fl->pl
+    
     V(mx) <+ mm1_x;
     V(my) <+ mm1_y;
     V(mz) <+ mm1_z;                              // output m_z
-    
-    
-    p_time = $abstime;
     end
     
 endmodule
