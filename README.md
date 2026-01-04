@@ -5,16 +5,23 @@
 - The free layer has perpendicular magnetization
 - verilog-a code: EDA cluster -> /home/zhuzhf/code/project/MRAM2 -> **MRAM** library -> **SOT-zf** cell
 
+### Resistor network
+
+- The device structure and its corresponding resistor network is shown below.
+
+![image-20260104120620194](README.assets/image-20260104120620194.png)
+
 ### Default Parameters
 
-| Name            | Value          | Name         | Value             |
-| --------------- | -------------- | ------------ | ----------------- |
-| M~s~            | 1000 emu/cm^3^ | R~p~         | 2kΩ               |
-| α               | 0.01           | R~HM~        | 500Ω              |
-| H~k~            | 1600 emu/cm3   | TMR          | 150%              |
-| FL polarization | 0.4            | demag tensor | online calculated |
-| θ~SH~           | −0.2           | θ~init~      | 5°                |
-| σ               | (0,1,0)        |              |                   |
+| Name                     | Value          | Name                     | Value             |
+| ------------------------ | -------------- | ------------------------ | ----------------- |
+| M~s~                     | 1000 emu/cm^3^ | R~p~                     | 2kΩ               |
+| α                        | 0.01           | ρ~HM~                    | 200e-8 Ω.m        |
+| H~k~                     | 1.5 T          | TMR                      | 150%              |
+| FL polarization          | 0.4            | demag tensor             | online calculated |
+| θ~SH~                    | −0.2           | θ~init~                  | 5°                |
+| σ                        | (0,1,0)        | Temperature              | 0 K               |
+| L~FL~, W~FL~, t~FL~ (nm) | 50, 50, 0.6    | L~HM~, W~HM~, t~HM~ (nm) | 55, 55, 4         |
 
 ### Determine the sign of **θ**~sh~
 
@@ -40,16 +47,15 @@
 - By changing the following parameters, SOT switching identical to matlab simulation [^SOT-matlab] is obtained
 
   - ```verilog
-    parameter real Hk    = 1.5;
     parameter real hext_x = -100e-3;
     ```
     
-1. Virtuoso setups and results
+1. Virtuoso setups and results, where vdc is 44 mV
    
-    <img src="README.assets/image-20250904180004529.png" alt="image-20250904180004529" style="zoom:33%;" />
+    ![image-20260104174249906](README.assets/image-20260104174249906.png)
     
-    <img src="README.assets/image-20250906114935376.png" alt="image-20250906114935376" style="zoom:33%;" />
-  - The waveform shows I<sub>HM</sub> = 4.42 μA, converting into current density is 4.0182e11 A/m^2^, which is used in the matlab simulation for benchmarking.
+    <img src="README.assets/image-20260104174151893.png" alt="image-20260104174151893" style="zoom:33%;" />
+  - The waveform shows I<sub>HM</sub> = 88 μA, converting into current density is 4.0182e11 A/m^2^, which is used in the matlab simulation for benchmarking.
 2. Comparison between matlab and verilog-a
 
 <img src="README.assets/image-20250904180050650.png" alt="image-20250904180050650" style="zoom:33%;" />
@@ -58,7 +64,7 @@
 
 **Sweeping Jc**
 
-
+<img src="README.assets/image-20260102174750364.png" alt="image-20260102174750364" style="zoom:30%;" />
 
 **Sweeping Hx**
 

@@ -4,12 +4,14 @@
 `include "disciplines.vams"
 `include "constants.vams"
 
-module MTJtest(pl,  // Pinned layer terminal of the MTJ
-               HML, // Left terminal of the heavy metal layer
-               HMR, // Right terminal of the heavy metal layer
+module MTJtest(pl,    // Pinned layer terminal of the MTJ
+               HML,   // Left terminal of the heavy metal layer
+               HMR,   // Right terminal of the heavy metal layer
                mx,
                my,
-               mz);
+               mz,
+               iHM,
+               iMTJ);
     
     // Constants
     parameter real gamma = 1.760859644e11;        // [rad/s/T]
@@ -25,13 +27,14 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     parameter real WFL = 50e-9;                       // [m] MTJ width
     parameter real LFL = 50e-9;                       // [m] MTJ length
     
-    parameter real tHM = 2e-9;                      // [m] thickness of HM
-    parameter real WHM = 55e-9;                       // [m] HM width
-    parameter real LHM = 55e-9;                       // [m] HM length
+    parameter real tHM    = 4e-9;                      // [m] thickness of HM
+    parameter real WHM    = 55e-9;                       // [m] HM width
+    parameter real LHM    = 55e-9;                       // [m] HM length
+    parameter real rho_HM = 200e-8;                   // [ohm.m] resistivity of HM layer
     
     parameter real Ms    = 1000;                      // saturation magnetization 1000[emu/cm3]    = 1e6[A/m]
     parameter real alpha = 0.01;                      // alpha damping factor
-    parameter real Hk    = 4*`M_PI*1600*1e-4;         // uniaxial anisotropy [T]    = 1600emu/cm3
+    parameter real Hk    = 1.5;         // uniaxial anisotropy [T]    = 1600emu/cm3
     // external field
     parameter real hext_x = 0;                        //  [T]
     parameter real hext_y = 0;
@@ -67,13 +70,13 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     parameter real demag_nz = 0.960635227939411;      // online calculated
     
     // TMR and Resistance
-    parameter real RP   = 2.0e3;                       // RP resistance, [ohm]
-    parameter real TMR  = 1.5;
-    parameter real R_HM = 500;                       // HM resistance, [ohm], change to calculate using resistivity
+    parameter real RP  = 2.0e3;                       // RP resistance, [ohm]
+    parameter real TMR = 1.5;
     
     // ports
-    inout pl, HML, HMR, mx, my, mz;
-    electrical pl, HML, HMR, mx, my, mz;
+    inout pl, HML, HMR, mx, my, mz, iHM, iMTJ;
+    electrical pl, HML, HMR, mx, my, mz, iHM, iMTJ;
+    electrical nc; // Internal node for the T-network center
     
     real RAP = RP*(1+TMR);
     real R_mtj;
@@ -87,10 +90,11 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     
     real kk1x, kk1y, kk1z, kk2x, kk2y, kk2z, kk3x, kk3y, kk3z, kk4x, kk4y, kk4z;
     real norm;
-    real dt, p_time; // time control
-    real Jc_STT, Jc_SOT; // current density for STT and SOT
-    real Jp; // characteristic current density for STT
+    real dt; // time control
+    real Jc_STT, Jc_SOT, i_HM; // current density for STT and SOT
     
+    localparam R_half = rho_HM * LHM / (WHM * tHM)/ 2.0; // Based on HM geometry
+    localparam Jp     = (2*tFL*(Ms*1e3))/hbar;// characteristic current density for STT
     // Fields -----------------------------------------------------------
     analog function real field_eta;
     input m_x, m_y, m_z, Hk, demag_nx, demag_ny, demag_nz, hext_x, hext_y, hext_z, Jc_STT, Ms, mx_PL, my_PL,
@@ -276,10 +280,12 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     LLG_solver = 0;
     end
     endfunction
-    
     // ------------------------------------------------------------------------------
     // LLG behavior
     analog begin
+    
+    // Heavy Metal Branches (T2 to Center, Center to T3)
+    i_HM = 0.5 * ((V(HML, nc)/R_half) + (V(nc, HMR)/R_half));
     
     // initialization -----------------------------------------------------------
     @(initial_step("tran")) begin
@@ -289,33 +295,40 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     mm1_y = sin(theta_init)*sin(phi_init);
     mm1_z = cos(theta_init);
     
-    Jp = (2*tFL*(Ms*1e3))/hbar;
-    
-    p_time = 0; // Previous time
-    seed   = 42; // Initialize random seed
+    seed = 42; // Initialize random seed
     end
     
-    @(timer(0, max_tstep)) begin // update only on accepted timesteps using a timer event
+    @(timer(0, max_tstep)) begin
     dt = max_tstep;
     
     R_mtj  = RP+(RAP-RP)*((1-mm1_z)/2);
     Jc_STT = V(HML, pl)/R_mtj/WFL/LFL;
-    Jc_SOT = V(HML, HMR)/R_HM/WHM/tHM;
-    
+    Jc_SOT = i_HM/WHM/tHM;
     // --- Thermal Noise Calculation ---
     // Magnitude of thermal field: sqrt((2 * alpha * kb * T) / (gamma * Ms * Vol * dt))
-    // Note: Vol = WFL * LFL * tFL
-    begin : thermal_field
-    real vol, std_dev;
-    vol = WFL * LFL * tFL;
-    // Use mu_0 to convert energy to Tesla field units
-    std_dev = sqrt(2 * alpha * kb * Temp / (gamma * (Ms*1e3) * vol * dt));
     
-    // Random components for each axis
-    hth_x = std_dev * $dist_normal(seed, 0, 1);
-    hth_y = std_dev * $dist_normal(seed, 0, 1);
-    hth_z = std_dev * $dist_normal(seed, 0, 1);
+    begin : thermal_field
+    real vol, std_dev, Ms_Am;
+    
+    if (Temp > 0) begin
+        vol   = WFL * LFL * tFL;
+        Ms_Am = Ms * 1e3; // Convert emu/cm3 to A/m
+        
+        // Thermal field standard deviation (Tesla)
+        std_dev = sqrt((2.0 * alpha * kb * Temp) / (gamma * Ms_Am * vol * dt));
+        
+        // $dist_normal generates a mean-0, var-1 Gaussian; scale by std_dev
+        // Note: seed is updated automatically by the function
+        hth_x = std_dev * $dist_normal(seed, 0, 1);
+        hth_y = std_dev * $dist_normal(seed, 0, 1);
+        hth_z = std_dev * $dist_normal(seed, 0, 1);
+        end else begin
+        hth_x = 0.0;
+        hth_y = 0.0;
+        hth_z = 0.0;
     end
+    end
+    
     // solving LLG equation using RK4 -------------------------------------------
     m_x = mm1_x;
     m_y = mm1_y;
@@ -364,8 +377,9 @@ module MTJtest(pl,  // Pinned layer terminal of the MTJ
     
     end
     R_mtj = RP+(RAP-RP)*((1-mm1_z)/2);
-    I(HML, pl) <+ V(HML, pl)/R_mtj;               // current direction: fl->pl
-    
+    // MTJ Branch (T1 to Center)
+    //V(iMTJ) <+ V(pl, nc) / R_mtj;
+    V(iHM) <+ i_HM;
     V(mx) <+ mm1_x;
     V(my) <+ mm1_y;
     V(mz) <+ mm1_z;                              // output m_z
