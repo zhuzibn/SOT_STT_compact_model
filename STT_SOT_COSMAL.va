@@ -23,7 +23,7 @@ module MTJtest(pl,    // Pinned layer terminal of the MTJ
     
     parameter real max_tstep = 5e-12;                     // [s] max time step
     
-    parameter real tFL = 0.6e-9;                      // [m] thickness of free layer
+    parameter real tFL = 1.2e-9;                      // [m] thickness of free layer
     parameter real WFL = 50e-9;                       // [m] MTJ width
     parameter real LFL = 50e-9;                       // [m] MTJ length
     
@@ -50,7 +50,7 @@ module MTJtest(pl,    // Pinned layer terminal of the MTJ
     parameter real facFLT_STT = 0;                  // ratio of FLT over DLT
     
     // SOT parameters
-    parameter real thetaSH    = 0.2;            //spin Hall angle
+    parameter real thetaSH    = 0.3;            //spin Hall angle
     parameter real lambdaSF   = 5e-9;           //spin diffusion length
     parameter real PSOT_x     = 0;              //spin flux polarization
     parameter real PSOT_y     = 1;
@@ -64,10 +64,10 @@ module MTJtest(pl,    // Pinned layer terminal of the MTJ
     parameter real my_PL      = 0;
     parameter real mz_PL      = 1;
     
-    // demagnization
-    parameter real demag_nx = 0.01968237864387906;
-    parameter real demag_ny = 0.01968237864387906;
-    parameter real demag_nz = 0.960635227939411;      // online calculated
+    // demagnization, online calculated, based on the geometry of the free layer, 50 x 50 x 1.2 nm3
+    parameter real demag_nx = 0.03410003710072577;
+    parameter real demag_ny = 0.03410003710072577;
+    parameter real demag_nz = 0.9317999110257267;
     
     // TMR and Resistance
     parameter real RP  = 2.0e3;                       // RP resistance, [ohm]

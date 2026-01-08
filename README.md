@@ -19,9 +19,14 @@
 | α                        | 0.01           | ρ~HM~                    | 200e-8 Ω.m        |
 | H~k~                     | 1.5 T          | TMR                      | 150%              |
 | FL polarization          | 0.4            | demag tensor             | online calculated |
-| θ~SH~                    | −0.2           | θ~init~                  | 5°                |
+| θ~SH~                    | −0.3           | θ~init~                  | 5°                |
 | σ                        | (0,1,0)        | Temperature              | 0 K               |
-| L~FL~, W~FL~, t~FL~ (nm) | 50, 50, 0.6    | L~HM~, W~HM~, t~HM~ (nm) | 55, 55, 4         |
+| L~FL~, W~FL~, t~FL~ (nm) | 50, 50, 1.2    | L~HM~, W~HM~, t~HM~ (nm) | 55, 55, 4         |
+
+**Discussions**
+
+- Based on Nat. Mater. **9**, 721 (2010)., H~an~ = 2(K~bulk~ + K~i~/t~FL~)/M~s~ with K~bulk~ = 2.245 × 10^5^ J/m^3^, K~i~ = 1.286 × 10^−3^ J/m^2^, M~s~ = 1.58 T=1257 emu/cm^3^, when we use t~FL~ = 1.2nm, it gives H~an~ = 2.06 T. Here we approximate M~s~ = 1000 emu/cm^3^, H~k~ = 1.5 T.
+- Ta = 190 µΩ.cm [2012-Science-Luqiao Liu], W = 260 µΩ.cm or 170 µΩ.cm [2012-APL-Chi-Feng Pai], we approximate ρ~HM~=200e-8 Ω.m.
 
 ### Determine the sign of **θ**~sh~
 
@@ -50,15 +55,15 @@
     parameter real hext_x = -100e-3;
     ```
     
-1. Virtuoso setups and results, where vdc is 44 mV
+1. Virtuoso setups and results, where vdc is 100 mV
    
-    ![image-20260104174249906](README.assets/image-20260104174249906.png)
+    ![image-20260107164807175](README.assets/image-20260107164807175.png)
     
-    <img src="README.assets/image-20260104174151893.png" alt="image-20260104174151893" style="zoom:33%;" />
-  - The waveform shows I<sub>HM</sub> = 88 μA, converting into current density is 4.0182e11 A/m^2^, which is used in the matlab simulation for benchmarking.
+    <img src="README.assets/image-20260108111620317.png" alt="image-20260108111620317" style="zoom:33%;" />
+  - Based on R~HM~=ρ~HM~xL~HM~/(W~HM~xt~HM~)=500Ω. The waveform shows that we get the correct I~HM~ =100mV/500Ω= 200 μA. Converting into current density is 100mV/500Ω/(55e-9x4e-9)=9.09e11 A/m^2^, which is used in the matlab simulation for benchmarking.
 2. Comparison between matlab and verilog-a
 
-<img src="README.assets/image-20250904180050650.png" alt="image-20250904180050650" style="zoom:33%;" />
+<img src="README.assets/image-20260108112350066.png" alt="image-20260108112350066" style="zoom:33%;" />
 
 ### Basic SOT characteristics[^basic SOT]
 
