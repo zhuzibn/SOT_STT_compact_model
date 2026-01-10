@@ -69,9 +69,17 @@
 
 **Sweeping Jc**
 
-<img src="README.assets/image-20260102174750364.png" alt="image-20260102174750364" style="zoom:30%;" />
+- Based on the following result, we know vdc should be limited below 0.23 V, corresponding to Jc<2e12 A/m^2^.
 
-**Sweeping Hx**
+<img src="README.assets/image-20260109115345290.png" alt="image-20260109115345290" style="zoom:33%;" />
+
+<img src="README.assets/image-20260110113816386.png" alt="image-20260110113816386" style="zoom:33%;" /><img src="README.assets/image-20260109115617747.png" alt="image-20260109115617747" style="zoom:33%;" />
+
+**Sweeping H~x~**
+
+Based on the following result, we know **H**~x~ should be limited below 0.15 T.
+
+<img src="README.assets/image-20260110162814422.png" alt="image-20260110162814422" style="zoom:33%;" />
 
 ## STT verification
 
